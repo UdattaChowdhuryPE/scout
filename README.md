@@ -95,6 +95,26 @@ Next.js 16 application with a search form and live results UI. Consumes the back
 6. **Real-time updates**: Frontend consumes SSE stream, updates progress UI on each event, renders founder cards with scores/explanations/outreach messages once `results` event arrives
 7. **Copy and act**: User can copy personalized outreach message to clipboard for each ranked founder
 
+## Key Design Decisions
+
+1. **Single Claude Call**: All founders analyzed in one batch → lower latency, cost-efficient, enables cross-founder ranking
+   - **Why**: Batch processing is ~50% cheaper per founder than serial calls; holistic analysis produces better fit rankings
+   
+2. **SSE Streaming**: Real-time progress updates without polling
+   - **Why**: One-way streaming (no client→server messages needed), simpler than WebSockets, minimal overhead
+   
+3. **Claude Haiku**: Uses `claude-haiku-4-5-20251001` for analysis
+   - **Why**: 10x cheaper than Sonnet; quality is sufficient for founder scoring
+   
+4. **Async Crustdata**: Parallel founder fetches with semaphore (5 concurrent)
+   - **Why**: Reduces latency; semaphore prevents rate limit hits
+   
+5. **No Database**: All processing is stateless
+   - **Why**: Simplifies deployment; no persistence requirements for one-shot searches
+   
+6. **No Auth**: Local development focus
+   - **Why**: Faster iteration; can add auth later if needed for multi-user deployment
+
 ## API Reference
 
 ### Health Check
