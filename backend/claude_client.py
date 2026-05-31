@@ -108,6 +108,12 @@ async def rank_with_claude(
         # Parse JSON
         results_raw = json.loads(raw_text)
 
+        # Build lookup: (full_name, company_name) → linkedin_url
+        url_lookup = {
+            (p["founder"]["full_name"], p["founder"]["company_name"]): p["founder"].get("linkedin_url")
+            for p in pairs
+        }
+
         # Convert to FounderResult list
         results = []
         for item in results_raw:
@@ -117,6 +123,7 @@ async def rank_with_claude(
                 fit_score=item["fit_score"],
                 fit_explanation=item["fit_explanation"],
                 outreach_message=item["outreach_message"],
+                linkedin_url=url_lookup.get((item["full_name"], item["company_name"])),
             )
             results.append(result)
 

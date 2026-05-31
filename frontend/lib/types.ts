@@ -34,6 +34,7 @@ export interface FounderResult {
   fit_score: number
   fit_explanation: string
   outreach_message: string
+  linkedin_url: string | null
 }
 
 export type SearchPhase = "idle" | "companies" | "founders" | "ai" | "done" | "error"

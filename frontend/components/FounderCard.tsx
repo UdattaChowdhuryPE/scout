@@ -2,6 +2,7 @@
 
 import { FounderResult } from "@/lib/types"
 import { CopyButton } from "./CopyButton"
+import { ExternalLink } from "lucide-react"
 
 interface FounderCardProps {
   result: FounderResult
@@ -20,9 +21,22 @@ export function FounderCard({ result, rank }: FounderCardProps) {
       <div className="p-6 border-b border-[--color-border]">
         <div className="flex items-start justify-between gap-4 mb-3">
           <div className="flex-1 min-w-0">
-            <h3 className="text-base sm:text-lg font-semibold text-[--color-ink]">
-              {result.full_name}
-            </h3>
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-base sm:text-lg font-semibold text-[--color-ink]">
+                {result.full_name}
+              </h3>
+              {result.linkedin_url && (
+                <a
+                  href={result.linkedin_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center text-[--color-muted] hover:text-[--color-accent] transition-colors flex-shrink-0"
+                  aria-label={`${result.full_name} on LinkedIn`}
+                >
+                  <ExternalLink size={14} />
+                </a>
+              )}
+            </div>
             <p className="text-xs sm:text-sm text-[--color-muted] truncate">
               {result.company_name}
             </p>

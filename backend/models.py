@@ -31,6 +31,7 @@ class FounderResult(TypedDict):
     fit_score: int
     fit_explanation: str
     outreach_message: str
+    linkedin_url: Optional[str]
 
 
 class SearchRequest(BaseModel):
