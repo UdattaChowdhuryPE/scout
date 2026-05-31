@@ -26,7 +26,7 @@ function getErrorHint(code: string): string {
 
 export function ErrorBanner({ code, message, onRetry }: ErrorBannerProps) {
   return (
-    <div className="w-full max-w-2xl bg-[--color-surface] border border-[--color-score-low] rounded-[var(--radius)] p-6 space-y-4">
+    <div className="w-full max-w-2xl bg-[--color-surface] border border-[--color-score-low] rounded-[var(--radius)] p-6 flex flex-col items-start gap-4">
       <div>
         <h3 className="font-semibold text-[--color-score-low] mb-2 text-base sm:text-lg">Search Failed</h3>
         <p className="text-sm text-[--color-ink] mb-2">{message}</p>
@@ -35,7 +35,7 @@ export function ErrorBanner({ code, message, onRetry }: ErrorBannerProps) {
 
       <button
         onClick={onRetry}
-        className="w-full sm:w-auto px-6 py-2 bg-[--color-score-low] text-[--color-background] font-medium rounded-[var(--radius)] text-sm transition-opacity duration-150 hover:opacity-90"
+        className="px-6 py-2 bg-[--color-score-low] text-[--color-background] font-medium rounded-[var(--radius)] text-sm transition-opacity duration-150 hover:opacity-90"
       >
         Try Again
       </button>

@@ -185,10 +185,17 @@ async def fetch_all_founders(
 
     results = await asyncio.gather(
         *[bounded_fetch(company) for company in companies],
-        return_exceptions=False,
+        return_exceptions=True,
     )
 
-    pairs = [(company, founders) for company, founders in results if founders]
+    pairs = []
+    for result in results:
+        if isinstance(result, Exception):
+            logger.warning(f"Skipped company due to fetch error: {result}")
+        else:
+            company, founders = result
+            if founders:
+                pairs.append((company, founders))
     skipped = len(results) - len(pairs)
 
     total = sum(len(f) for _, f in pairs)
