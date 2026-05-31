@@ -2,6 +2,20 @@
 
 An autonomous founder discovery engine for engineers hunting startup opportunities. Given a set of search criteria (industry, country, company stage, desired role), Scout queries the CrustData API to find matching companies, fetches their founders, ranks them with Claude AI for cultural and technical fit, and streams personalized outreach messages in real-time. Built with FastAPI, Claude Haiku, and Next.js.
 
+## Screenshots
+
+**Search Form** — Enter industry, country, company stage, and desired role.
+
+![Search Form](docs/screenshots/01-search-form.png)
+
+**Progress Feed** — Real-time 3-step tracker streams status as the pipeline runs (finding companies → fetching founders → AI analysis).
+
+![Progress Feed](docs/screenshots/02-progress-feed.png)
+
+**Results Grid** — Ranked FounderCards with fit scores, explanations, and copyable outreach messages ready for recruitment.
+
+![Results Grid](docs/screenshots/03-results-grid.png)
+
 ## Features
 
 - **AI-ranked founders**: Claude analyzes each founder's background and company trajectory; ranks them by fit to your profile in a single batch call
@@ -10,6 +24,10 @@ An autonomous founder discovery engine for engineers hunting startup opportuniti
 - **Parallel data fetching**: Fetches founder data for all companies concurrently with semaphore-gated rate limiting
 - **Cost-efficient ranking**: Uses Claude Haiku (~10x cheaper than Sonnet) for batch scoring; single API call enables cross-founder comparison
 - **Stateless design**: No database — all processing is ephemeral, simplifying deployment and enabling one-off searches
+- **LinkedIn deep linking**: Each founder card links directly to their LinkedIn profile for quick context
+- **Results segmentation**: Top matches (score ≥ 6) shown prominently; lower-relevance results (< 6) collapsed for focus
+- **Optional Langfuse tracing**: Enable LLM observability with `LANGFUSE_PUBLIC_KEY` to track all searches and ranking decisions
+- **Structured logging**: Every request gets a unique ID; all logs tagged for easy trace correlation and debugging
 
 ## Prerequisites
 
@@ -59,6 +77,19 @@ npm run dev
 
 Frontend will start at `http://localhost:3000`
 
+### 4. (Optional) Enable Langfuse Observability
+
+To trace all Claude API calls and view search analytics in Langfuse:
+
+```bash
+# Edit backend/.env to add:
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_HOST=https://cloud.langfuse.com
+```
+
+If these are not set, observability is silently disabled — no code changes needed. Each search will be traced with model, tokens, latency, and input/output for analysis.
+
 ## Architecture
 
 ### Backend
@@ -66,11 +97,12 @@ Frontend will start at `http://localhost:3000`
 FastAPI application that orchestrates the founder discovery pipeline. Receives search parameters via POST `/api/search`, fetches companies and founders in parallel from CrustData, sends them to Claude for ranking, and streams results back as SSE events. Request flow: POST → fetch companies → fetch founders for each company (concurrent, semaphore-gated) → batch rank with Claude → stream results. Each stage emits `progress` events so the frontend can display real-time status updates.
 
 **Key files**:
-- **`backend/main.py`** — FastAPI app, `/health` and `/api/search` endpoints, SSE event streaming
+- **`backend/main.py`** — FastAPI app, `/health` and `/api/search` endpoints, SSE event streaming, RequestID middleware
 - **`backend/crustdata.py`** — CrustData API client, company screening and founder person search
 - **`backend/claude_client.py`** — Claude integration for ranking founders, system prompt defines recruiter persona
 - **`backend/models.py`** — TypeScript-like models: SearchRequest, Company, Founder, FounderResult
-- **`backend/sse_helpers.py`** — SSE frame formatting utility
+- **`backend/observability.py`** — Optional Langfuse integration for LLM tracing and analytics
+- **`backend/evals/`** — LLM eval tests validating ranking logic and outreach message quality
 
 ### Frontend
 
@@ -161,6 +193,27 @@ curl -X POST http://localhost:8000/api/search \
 | `ai_error` | Claude analysis failed | Check Anthropic API key and quota |
 | `missing_keys` | Backend environment variables not set | Verify `.env` has `CRUSTDATA_API_KEY` and `ANTHROPIC_API_KEY` |
 | `network_error` | Frontend cannot reach backend | Confirm backend is running on http://localhost:8000 |
+| `analysis_error` | Claude returned malformed or unparseable JSON | Usually transient; try again |
+| `unknown_error` | Unexpected exception in the pipeline | Check backend logs for full traceback |
+
+## LLM Evals
+
+The `backend/evals/` directory contains 6 pytest-based evaluation tests that make real Claude API calls to validate the ranking logic and outreach quality. They are gated behind the `llm` marker to prevent accidental execution in CI.
+
+```bash
+cd backend
+uv run pytest evals/ -m llm -v
+```
+
+Tests cover:
+- **Schema validity** — Claude returns properly structured FounderResult objects
+- **Score ordering** — Strong-fit founders score higher than weak-fit
+- **Score ranges** — Fit scores are within expected bounds (strong ≥ 7, weak ≤ 5)
+- **Outreach adherence** — Messages follow the template with no unfilled placeholders
+- **Sort order** — Results sorted by descending fit_score
+- **Founder-company consistency** — Names match input data
+
+Each run costs approximately **$0.01 in Claude API credits**.
 
 ## Performance
 

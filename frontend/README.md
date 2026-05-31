@@ -1,36 +1,94 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Scout Frontend
 
-## Getting Started
+Next.js 16 + React 19 application for the Scout founder discovery agent. Renders a search form, streams real-time progress from the backend via SSE, and displays ranked founder cards with copyable outreach messages.
 
-First, run the development server:
+## Requirements
+
+- Node.js 18+
+- npm
+- Scout backend running at http://localhost:8000
+
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cd frontend
+npm install
+npm run dev                         # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Environment variables in `frontend/.env.local`:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Variable | Default | Description |
+|---|---|---|
+| NEXT_PUBLIC_API_URL | http://localhost:8000 | Backend base URL for API calls |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Component Structure
 
-## Learn More
+```
+app/
+  page.tsx          State machine router — switches between the 4 phases
+  layout.tsx        Root layout: Geist fonts, dark background, metadata
+  globals.css       Design tokens (OKLCH palette, spacing, radius) + TailwindCSS v4
 
-To learn more about Next.js, take a look at the following resources:
+components/
+  SearchForm.tsx    4-field form: industry/country/stage/role_interest dropdowns + submit
+  ProgressFeed.tsx  3-step animated tracker (companies → founders → ai)
+  ResultsGrid.tsx   Renders FounderCards, segments top (>=6) vs low (<6) results
+  FounderCard.tsx   Score badge, fit explanation, outreach message, LinkedIn deep link
+  CopyButton.tsx    Clipboard copy with 2-second "Copied!" feedback
+  ErrorBanner.tsx   Error code → human-readable hint + retry button
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+hooks/
+  useFounderSearch.ts  SSE consumer, state machine, abort handling
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+lib/
+  types.ts          TypeScript interfaces mirroring backend models
+  constants.ts      INDUSTRIES, COUNTRIES, STAGES dropdown options
+```
 
-## Deploy on Vercel
+## State Machine
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+`useFounderSearch` drives a 4-phase state machine:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+idle  ──(submit)──▶  companies/founders/ai  ──(results event)──▶  done
+                              │
+                              └──(error event / network failure)──▶  error
+```
+
+`page.tsx` switches the UI based on `state.phase`:
+
+- **`idle`** — SearchForm inside a surface card with hero heading ("Scout: Founder Discovery Agent")
+- **`companies | founders | ai`** — ProgressFeed with animated 3-step tracker showing real-time progress
+- **`done`** — ResultsGrid with ranked FounderCards + "New Search" button; results split by score threshold
+- **`error`** — ErrorBanner with code-specific hint + "Try Again" button
+
+## Key Design Decisions
+
+**SSE over WebSockets**: One-way streaming is sufficient (no client→server messages during search). SSE is simpler, native to browsers, and requires no special server setup.
+
+**Results segmentation**: `ResultsGrid` splits results at score >= 6. Founders with high fit_score render immediately; scores < 6 are collapsed in a `<details>` element labeled "Low Relevance — N founders". This keeps the primary view focused on the best matches.
+
+**Abort on re-submit**: `useFounderSearch` holds an `AbortController` ref. Submitting a new search while one is in progress cancels the previous SSE stream before starting the new one.
+
+**LinkedIn deep linking**: Each FounderCard renders an `ExternalLink` icon next to the founder name that opens their LinkedIn profile in a new tab.
+
+**Design system**: Dark theme with teal accent. Tokens are OKLCH-based CSS custom properties defined in `globals.css`. TailwindCSS v4 is used purely for utilities — no configuration file; all tokens live in CSS variables.
+
+## Important: Next.js 16
+
+This project uses Next.js 16, which has breaking changes from prior versions. Read `frontend/AGENTS.md` before writing any frontend code. API routes, file conventions, and some component APIs differ from what training data may suggest.
+
+## Running the App
+
+With both backend and frontend running:
+
+```bash
+# Terminal 1 — backend
+cd backend && uv run uvicorn main:app --reload
+
+# Terminal 2 — frontend
+cd frontend && npm run dev
+```
+
+Navigate to http://localhost:3000 to see the search form. Enter search criteria and click "Find Founders" to start a live search.
