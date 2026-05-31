@@ -1,7 +1,12 @@
 import json
 import re
+import logging
+import time
 import anthropic
 from models import Company, Founder, FounderResult, SearchRequest
+from observability import langfuse
+
+logger = logging.getLogger(__name__)
 
 
 SYSTEM_PROMPT = """You are a recruiting advisor evaluating startup founders as potential employers for a software engineer.
@@ -77,16 +82,26 @@ async def rank_with_claude(
     pairs: list[dict],
     request: SearchRequest,
     model: str = "claude-haiku-4-5-20251001",
+    trace_id: str = None,
 ) -> list[FounderResult]:
     """
     Call Claude to rank and analyze founders in a single batch call.
     Returns a list of FounderResult TypedDicts sorted by fit_score.
     """
     client = anthropic.Anthropic()
-
     user_prompt = build_user_prompt(pairs, request)
 
+    generation = None
+    if langfuse and trace_id:
+        generation = langfuse.generation(
+            name="rank_with_claude",
+            trace_id=trace_id,
+            model=model,
+            input={"system": SYSTEM_PROMPT, "user": user_prompt},
+        )
+
     try:
+        start_time = time.perf_counter()
         response = client.messages.create(
             model=model,
             max_tokens=8192,
@@ -97,6 +112,16 @@ async def rank_with_claude(
                     "content": user_prompt,
                 }
             ],
+        )
+        elapsed = time.perf_counter() - start_time
+
+        logger.info(
+            "rank_with_claude completed model=%s input_tokens=%d output_tokens=%d founders_ranked=%d latency_sec=%.2f",
+            model,
+            response.usage.input_tokens,
+            response.usage.output_tokens,
+            len(pairs),
+            elapsed,
         )
 
         raw_text = response.content[0].text.strip()
@@ -129,9 +154,20 @@ async def rank_with_claude(
 
         # Already sorted by Claude, but sort again to be safe
         results = sorted(results, key=lambda x: x["fit_score"], reverse=True)
+
+        if generation:
+            generation.end(
+                output=results,
+                usage={"input": response.usage.input_tokens, "output": response.usage.output_tokens},
+            )
+
         return results
 
     except json.JSONDecodeError as e:
+        if generation:
+            generation.end(status_message=f"JSON parse error: {e}")
         raise ValueError(f"Failed to parse Claude's JSON response: {e}")
     except (KeyError, anthropic.APIError) as e:
+        if generation:
+            generation.end(status_message=f"API error: {e}")
         raise ValueError(f"Claude API error: {e}")

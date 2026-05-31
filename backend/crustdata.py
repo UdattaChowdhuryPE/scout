@@ -196,6 +196,8 @@ async def fetch_all_founders(
             company, founders = result
             if founders:
                 pairs.append((company, founders))
+            else:
+                logger.info(f"company_no_qualifying_founders company={company['company_name']}")
     skipped = len(results) - len(pairs)
 
     total = sum(len(f) for _, f in pairs)

@@ -1,11 +1,14 @@
 import os
 import asyncio
 import logging
+import uuid
 from typing import AsyncGenerator
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 
@@ -13,6 +16,7 @@ from models import SearchRequest, Company, Founder
 from sse_helpers import format_sse
 from crustdata import get_client, fetch_companies, fetch_all_founders
 from claude_client import rank_with_claude
+from observability import langfuse
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +25,40 @@ load_dotenv()
 CRUSTDATA_API_KEY = os.getenv("CRUSTDATA_API_KEY")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
-app = FastAPI(title="Scout - Founder Discovery Agent")
+request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
 
+
+class RequestIDFilter(logging.Filter):
+    def filter(self, record):
+        record.request_id = request_id_var.get()
+        return True
+
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        request_id = str(uuid.uuid4())[:8]
+        token = request_id_var.set(request_id)
+        try:
+            response = await call_next(request)
+            return response
+        finally:
+            request_id_var.reset(token)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)-8s %(name)s %(message)s [req=%(request_id)s]",
+    )
+    root_logger = logging.getLogger()
+    root_logger.addFilter(RequestIDFilter())
+    yield
+
+
+app = FastAPI(title="Scout - Founder Discovery Agent", lifespan=lifespan)
+
+app.add_middleware(RequestIDMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:3001"],
@@ -139,7 +175,15 @@ async def stream_search(request: SearchRequest) -> AsyncGenerator[str, None]:
             logger.info(f"[PIPELINE] Limiting to 25 of {len(pairs_for_claude)} founders for Claude")
             pairs_for_claude = pairs_for_claude[:25]
 
-        results = await rank_with_claude(pairs_for_claude, request)
+        request_id = request_id_var.get()
+        trace = None
+        if langfuse:
+            trace = langfuse.trace(name="founder-search", id=request_id)
+
+        results = await rank_with_claude(pairs_for_claude, request, trace_id=request_id if trace else None)
+
+        if langfuse and trace:
+            langfuse.flush()
 
         logger.info(f"[PIPELINE] 5. founders_returned_by_claude={len(results)}")
 
@@ -152,6 +196,7 @@ async def stream_search(request: SearchRequest) -> AsyncGenerator[str, None]:
         )
 
     except ValueError as e:
+        logger.exception("ValueError in search pipeline: %s", str(e))
         yield format_sse(
             {
                 "type": "error",
@@ -160,6 +205,7 @@ async def stream_search(request: SearchRequest) -> AsyncGenerator[str, None]:
             }
         )
     except Exception as e:
+        logger.exception("Unexpected error in search pipeline: %s", str(e))
         yield format_sse(
             {
                 "type": "error",
