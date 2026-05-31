@@ -8,6 +8,41 @@ interface ProgressFeedProps {
   progressStep: "companies" | "founders" | "ai" | null
 }
 
+function SpinnerIcon() {
+  return (
+    <svg
+      className="animate-spin h-4 w-4"
+      viewBox="0 0 16 16"
+      fill="none"
+    >
+      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeOpacity="0.3" strokeWidth="2" />
+      <path d="M8 2a6 6 0 0 1 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function CheckmarkIcon() {
+  return (
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 16 16"
+      fill="none"
+    >
+      <path
+        d="M3 8l3.5 3.5L13 5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function PendingDot() {
+  return <div className="w-2 h-2 rounded-full bg-current" />
+}
+
 export function ProgressFeed({
   phase,
   message,
@@ -31,13 +66,13 @@ export function ProgressFeed({
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center font-medium text-xs flex-shrink-0 transition-all duration-150 ${
                   isActive
-                    ? "bg-[--color-accent] text-[--color-background] animate-pulse"
+                    ? "bg-[--color-accent] text-[--color-background]"
                     : isDone
-                      ? "bg-[--color-score-high] text-[--color-background]"
-                      : "bg-[--color-surface-2] text-[--color-muted] border border-[--color-border]"
+                      ? "bg-[--color-score-high] text-[--color-background] animate-in zoom-in-50 duration-200"
+                      : "bg-[--color-surface-2] text-[--color-muted] border border-[--color-border] animate-pulse opacity-60"
                 }`}
               >
-                {isDone ? "✓" : isActive ? "⟳" : "○"}
+                {isDone ? <CheckmarkIcon /> : isActive ? <SpinnerIcon /> : <PendingDot />}
               </div>
               <span
                 className={`text-sm font-medium transition-colors duration-150 ${
@@ -52,7 +87,10 @@ export function ProgressFeed({
       </div>
 
       {message && (
-        <p className="text-sm text-[--color-muted] text-center">{message}</p>
+        <p className="text-sm text-[--color-muted] text-center">
+          {message}
+          <span className="inline-block w-px h-3 bg-[--color-muted] ml-1 align-middle animate-[blink_1s_step-end_infinite]" />
+        </p>
       )}
     </div>
   )
