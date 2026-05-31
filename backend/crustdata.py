@@ -1,8 +1,10 @@
 import asyncio
 import httpx
+import logging
 from typing import Optional
 from models import Company, Founder
 
+logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.crustdata.com"
 
@@ -10,126 +12,12 @@ BASE_URL = "https://api.crustdata.com"
 FOUNDER_TITLES = ["founder", "co-founder", "ceo", "cto", "chief executive", "chief technology"]
 
 
-def _get_mock_founders(company_id: int, company_name: str) -> list[Founder]:
-    """Return mock founder data when API fails."""
-    mock_founders_by_id = {
-        1: [  # Skit.ai
-            {
-                "full_name": "Sourabh Gupta",
-                "current_title": "CEO & Founder",
-                "linkedin_url": "https://linkedin.com/in/sourabhgupta",
-                "email": "sourabh@skit.ai",
-                "company_name": "Skit.ai",
-                "company_id": 1,
-            },
-            {
-                "full_name": "Sourav Mukherjee",
-                "current_title": "Co-founder & CTO",
-                "linkedin_url": "https://linkedin.com/in/souravmukherjee",
-                "email": None,
-                "company_name": "Skit.ai",
-                "company_id": 1,
-            },
-        ],
-        2: [  # Codemart
-            {
-                "full_name": "Rajesh Kumar",
-                "current_title": "Founder",
-                "linkedin_url": "https://linkedin.com/in/rajesh-kumar",
-                "email": "rajesh@codemart.io",
-                "company_name": "Codemart",
-                "company_id": 2,
-            },
-        ],
-        3: [  # Unstop
-            {
-                "full_name": "Priyank Kharge",
-                "current_title": "CEO & Co-founder",
-                "linkedin_url": "https://linkedin.com/in/priyankkharge",
-                "email": "priyank@unstop.com",
-                "company_name": "Unstop",
-                "company_id": 3,
-            },
-        ],
-        4: [  # Chargebee
-            {
-                "full_name": "Krish Subramanian",
-                "current_title": "Co-founder & CEO",
-                "linkedin_url": "https://linkedin.com/in/krishsubramanian",
-                "email": "krish@chargebee.com",
-                "company_name": "Chargebee",
-                "company_id": 4,
-            },
-        ],
-    }
-    founders_data = mock_founders_by_id.get(company_id, [])
-    return [Founder(**f) for f in founders_data]
-
-
-def _get_mock_companies(industry: str, country: str, limit: int) -> list[Company]:
-    """Return mock company data for demo/testing when Crustdata API fails."""
-    mock_companies = [
-        {
-            "company_id": 1,
-            "company_name": "Skit.ai",
-            "domain": "skit.ai",
-            "hq_country": "India",
-            "funding_stage": "Series B",
-            "total_funding_usd": 26000000,
-            "last_funding_date": "2023-06-15",
-            "description": "Conversational voice AI for enterprise contact centers",
-            "linkedin_url": "https://linkedin.com/company/skit-ai",
-            "company_tags": ["AI", "Voice AI", "B2B SaaS"],
-            "linkedin_headcount": 150,
-        },
-        {
-            "company_id": 2,
-            "company_name": "Codemart",
-            "domain": "codemart.io",
-            "hq_country": "India",
-            "funding_stage": "Series A",
-            "total_funding_usd": 5000000,
-            "last_funding_date": "2024-01-10",
-            "description": "AI-powered software development platform",
-            "linkedin_url": "https://linkedin.com/company/codemart",
-            "company_tags": ["AI", "Developer Tools", "SaaS"],
-            "linkedin_headcount": 45,
-        },
-        {
-            "company_id": 3,
-            "company_name": "Unstop",
-            "domain": "unstop.com",
-            "hq_country": "India",
-            "funding_stage": "Series A",
-            "total_funding_usd": 12000000,
-            "last_funding_date": "2023-09-20",
-            "description": "Creator economy platform with AI-powered discovery",
-            "linkedin_url": "https://linkedin.com/company/unstop",
-            "company_tags": ["AI", "Creator Economy", "Marketplace"],
-            "linkedin_headcount": 120,
-        },
-        {
-            "company_id": 4,
-            "company_name": "Chargebee",
-            "domain": "chargebee.com",
-            "hq_country": "India",
-            "funding_stage": "Series B",
-            "total_funding_usd": 30000000,
-            "last_funding_date": "2022-11-01",
-            "description": "Recurring billing and subscription management with AI features",
-            "linkedin_url": "https://linkedin.com/company/chargebee",
-            "company_tags": ["FinTech", "B2B SaaS", "Billing"],
-            "linkedin_headcount": 250,
-        },
-    ]
-    return [Company(**c) for c in mock_companies[:limit]]
-
-
 def get_client(api_key: str) -> httpx.AsyncClient:
-    """Return a configured httpx AsyncClient with auth header."""
+    """Return a configured httpx AsyncClient with auth headers."""
     headers = {
         "Authorization": f"Token {api_key}",
         "Content-Type": "application/json",
+        "x-api-version": "2025-11-01",
     }
     return httpx.AsyncClient(headers=headers, timeout=30.0)
 
@@ -142,10 +30,9 @@ async def fetch_companies(
     limit: int = 20,
 ) -> list[Company]:
     """
-    Fetch companies matching the search criteria using Crustdata screener.
+    Fetch companies matching the search criteria using Crustdata company search.
     Returns a list of Company TypedDicts.
     """
-    # Map stage names to Crustdata format (adjust if needed after seeing actual API response)
     stage_map = {
         "Pre-seed": "Pre-Seed",
         "Seed": "Seed",
@@ -154,57 +41,75 @@ async def fetch_companies(
     }
     crustdata_stage = stage_map.get(stage, stage)
 
-    # Build the screener request (filters as dict, not list)
     payload = {
-        "page": 1,
-        "limit": limit,
         "filters": {
-            "company_tags": {
-                "filter_type": "icontains",
-                "value": industry,
-            },
-            "hq_country": {
-                "filter_type": "in",
-                "value": [country],
-            },
-            "funding_stage": {
-                "filter_type": "in",
-                "value": [crustdata_stage],
-            },
+            "op": "and",
+            "conditions": [
+                {
+                    "field": "taxonomy.professional_network_industry",
+                    "type": "(.)",
+                    "value": industry.lower(),
+                },
+                {
+                    "field": "locations.headquarters",
+                    "type": "=",
+                    "value": country,
+                },
+                {
+                    "field": "funding.last_round_type",
+                    "type": "in",
+                    "value": [crustdata_stage.lower().replace(" ", "_")],
+                },
+            ],
         },
+        "limit": limit,
+        "fields": [
+            "crustdata_company_id",
+            "basic_info.name",
+            "basic_info.primary_domain",
+            "basic_info.professional_network_url",
+            "basic_info.professional_network_id",
+            "basic_info.year_founded",
+            "basic_info.employee_count_range",
+            "basic_info.industries",
+            "headcount.total",
+            "locations.headquarters",
+            "funding.total_investment_usd",
+            "funding.last_fundraise_date",
+            "funding.last_round_type",
+        ],
     }
 
     try:
-        response = await client.post(f"{BASE_URL}/screener/screen/", json=payload)
+        response = await client.post(f"{BASE_URL}/company/search", json=payload)
         if response.status_code != 200:
-            print(f"Crustdata error {response.status_code}: {response.text}")
-            # For demo purposes, return mock data if API fails
-            return _get_mock_companies(industry, country, limit)
+            logger.error(f"Company search error {response.status_code}: {response.text}")
+            raise ValueError(f"Crustdata API returned {response.status_code}: {response.text}")
         data = response.json()
 
-        # Parse companies from the response
         companies = []
-        results = data.get("results", [])
+        results = data.get("companies", [])
 
         for company_data in results:
             company = Company(
-                company_id=company_data.get("company_id", company_data.get("id")),
-                company_name=company_data.get("company_name", ""),
-                domain=company_data.get("domain", ""),
-                hq_country=company_data.get("hq_country", country),
-                funding_stage=company_data.get("funding_stage", stage),
-                total_funding_usd=company_data.get("total_funding_usd"),
-                last_funding_date=company_data.get("last_funding_date"),
-                description=(company_data.get("description") or "")[:200],  # Truncate for token efficiency
-                linkedin_url=company_data.get("linkedin_url"),
-                company_tags=company_data.get("company_tags", []),
-                linkedin_headcount=company_data.get("linkedin_headcount"),
+                company_id=company_data.get("crustdata_company_id"),
+                company_name=company_data.get("basic_info", {}).get("name", ""),
+                domain=company_data.get("basic_info", {}).get("primary_domain", ""),
+                hq_country=company_data.get("locations", {}).get("headquarters", country),
+                funding_stage=company_data.get("funding", {}).get("last_round_type", stage),
+                total_funding_usd=company_data.get("funding", {}).get("total_investment_usd"),
+                last_funding_date=company_data.get("funding", {}).get("last_fundraise_date"),
+                description=company_data.get("basic_info", {}).get("description", "")[:200],
+                linkedin_url=company_data.get("basic_info", {}).get("professional_network_url"),
+                company_tags=company_data.get("basic_info", {}).get("industries", [industry]),
+                linkedin_headcount=company_data.get("headcount", {}).get("total"),
             )
             companies.append(company)
 
+        logger.info(f"[PIPELINE] companies_fetched={len(companies)}")
         return companies
     except httpx.HTTPError as e:
-        raise ValueError(f"Crustdata API error: {e}")
+        raise ValueError(f"Crustdata company search error: {e}")
 
 
 async def fetch_founders_for_company(
@@ -213,49 +118,50 @@ async def fetch_founders_for_company(
     company_name: str,
 ) -> list[Founder]:
     """
-    Fetch founders for a specific company using Crustdata people search.
+    Fetch founders for a specific company using Crustdata person search.
     Returns a list of Founder TypedDicts, or empty list if none found.
     """
     payload = {
-        "filters": [
-            {
-                "filter_type": "eq",
-                "field": "company_id",
-                "value": company_id,
-            },
-        ],
-        "page": 1,
+        "filters": {
+            "field": "experience.employment_details.current.company_name",
+            "type": "=",
+            "value": company_name,
+        },
         "limit": 25,
     }
 
     try:
-        response = await client.post(f"{BASE_URL}/people/search/", json=payload)
-        response.raise_for_status()
+        response = await client.post(f"{BASE_URL}/person/search", json=payload)
+        if response.status_code != 200:
+            logger.error(f"Person search error {response.status_code}: {response.text}")
+            raise ValueError(f"Crustdata API returned {response.status_code}: {response.text}")
         data = response.json()
 
         founders = []
-        results = data.get("results", [])
+        results = data.get("profiles", [])
 
         for person_data in results:
-            # Filter for founders by title
-            title = (person_data.get("current_title") or "").lower()
+            basic_profile = person_data.get("basic_profile", {})
+            title = (basic_profile.get("current_title") or "").lower()
             is_founder = any(keyword in title for keyword in FOUNDER_TITLES)
 
             if is_founder:
+                social_handles = person_data.get("social_handles", {})
+                linkedin_url = social_handles.get("professional_network_identifier", {}).get("profile_url")
+
                 founder = Founder(
-                    full_name=person_data.get("full_name", ""),
-                    current_title=person_data.get("current_title", ""),
-                    linkedin_url=person_data.get("linkedin_url"),
-                    email=person_data.get("email"),
+                    full_name=basic_profile.get("name", ""),
+                    current_title=basic_profile.get("current_title", ""),
+                    linkedin_url=linkedin_url,
+                    email=None,  # Not available in Crustdata person/search response
                     company_name=company_name,
                     company_id=company_id,
                 )
                 founders.append(founder)
 
         return founders
-    except httpx.HTTPError:
-        # On error, return mock founders
-        return _get_mock_founders(company_id, company_name)
+    except httpx.HTTPError as e:
+        raise ValueError(f"Crustdata person search error for {company_name}: {e}")
 
 
 async def fetch_all_founders(
@@ -282,8 +188,11 @@ async def fetch_all_founders(
         return_exceptions=False,
     )
 
-    # Filter out companies with no founders
     pairs = [(company, founders) for company, founders in results if founders]
     skipped = len(results) - len(pairs)
+
+    total = sum(len(f) for _, f in pairs)
+    logger.info(f"[PIPELINE] companies_with_founders={len(pairs)}")
+    logger.info(f"[PIPELINE] total_founders={total}")
 
     return pairs, skipped

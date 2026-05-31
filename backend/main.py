@@ -1,5 +1,6 @@
 import os
 import asyncio
+import logging
 from typing import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -12,6 +13,8 @@ from models import SearchRequest, Company, Founder
 from sse_helpers import format_sse
 from crustdata import get_client, fetch_companies, fetch_all_founders
 from claude_client import rank_with_claude
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -64,8 +67,10 @@ async def stream_search(request: SearchRequest) -> AsyncGenerator[str, None]:
                 request.industry,
                 request.country,
                 request.stage,
-                limit=20,
+                limit=30,
             )
+
+        logger.info(f"[PIPELINE] 1. companies_from_crustdata={len(companies)}")
 
         if not companies:
             yield format_sse(
@@ -88,6 +93,11 @@ async def stream_search(request: SearchRequest) -> AsyncGenerator[str, None]:
         # Fetch founders
         async with get_client(CRUSTDATA_API_KEY) as client:
             pairs, skipped = await fetch_all_founders(client, companies)
+
+        total_founders = sum(len(founders) for _, founders in pairs)
+        logger.info(f"[PIPELINE] 2. companies_with_founders={len(pairs)}, skipped={skipped}")
+        logger.info(f"[PIPELINE] 3. founders_fetched={total_founders}")
+        logger.info(f"[PIPELINE] 4. founders_sent_to_claude={total_founders}")
 
         if not pairs:
             yield format_sse(
@@ -124,7 +134,14 @@ async def stream_search(request: SearchRequest) -> AsyncGenerator[str, None]:
             }
         )
 
+        # Cap at 25 founders to keep Claude response manageable
+        if len(pairs_for_claude) > 25:
+            logger.info(f"[PIPELINE] Limiting to 25 of {len(pairs_for_claude)} founders for Claude")
+            pairs_for_claude = pairs_for_claude[:25]
+
         results = await rank_with_claude(pairs_for_claude, request)
+
+        logger.info(f"[PIPELINE] 5. founders_returned_by_claude={len(results)}")
 
         yield format_sse(
             {

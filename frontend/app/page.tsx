@@ -17,7 +17,7 @@ export default function Home() {
             <>
               <div className="mb-12 sm:mb-16">
                 <h1 className="text-3xl sm:text-4xl font-bold text-[--color-ink] mb-3">
-                  Founder Discovery
+                  Scout: Founder Discovery Agent
                 </h1>
                 <p className="text-base sm:text-lg text-[--color-muted]">
                   Search startups and find founders aligned with your role.
@@ -83,7 +83,7 @@ export default function Home() {
       </div>
 
       <div className="py-4 px-4 border-t border-[--color-border] text-center text-xs text-[--color-muted]">
-        <p>Backend must be running on http://localhost:8000</p>
+        <p><b>Built by Udatta with ❤️ & 🤖</b></p>
       </div>
     </div>
   )

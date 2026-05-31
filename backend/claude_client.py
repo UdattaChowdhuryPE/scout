@@ -27,9 +27,9 @@ Scoring:
 - 9-10: Perfect fit on industry + stage + hiring signals
 - 7-8: Strong alignment on 2+ dimensions
 - 5-6: Partial match, worth reaching out
-- Below 5: Include only if specifically relevant
+- Below 5: Include all founders — return every result ranked by score
 
-Return ONLY a JSON array sorted by fit_score descending. No markdown, no explanation."""
+Return ONLY a JSON array of ALL founders sorted by fit_score descending. Do not filter out any founder. No markdown, no explanation."""
 
 
 def build_user_prompt(
@@ -51,13 +51,19 @@ COMPANIES AND FOUNDERS:
     for pair in pairs:
         founder = pair["founder"]
         company = pair["company"]
+        funding = company.get("total_funding_usd")
+        funding_str = f"${funding/1e6:.1f}M" if funding else "Unknown"
+        tags_str = ", ".join(company["company_tags"][:3]) if company["company_tags"] else "N/A"
+        description = company.get("description") or "N/A"
+        linkedin_url = company.get("linkedin_url") or "N/A"
+
         content += f"""
 ---
 Company: {company["company_name"]}
-Stage: {company["funding_stage"]} | Country: {company["hq_country"]} | Funding: ${company['total_funding_usd']/1e6:.1f}M
-Tags: {", ".join(company["company_tags"][:3])}
-Description: {company["description"]}
-LinkedIn: {company["linkedin_url"]}
+Stage: {company.get("funding_stage", "Unknown")} | Country: {company.get("hq_country", "Unknown")} | Funding: {funding_str}
+Tags: {tags_str}
+Description: {description}
+LinkedIn: {linkedin_url}
 
 Founder: {founder["full_name"]} | {founder["current_title"]}
 Email: {founder.get("email", "N/A")}
@@ -83,7 +89,7 @@ async def rank_with_claude(
     try:
         response = client.messages.create(
             model=model,
-            max_tokens=4096,
+            max_tokens=8192,
             system=SYSTEM_PROMPT,
             messages=[
                 {
